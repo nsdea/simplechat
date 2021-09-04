@@ -48,11 +48,11 @@ def handle_client(client):  # Takes client socket as argument.
 def broadcast(msg, prefix='[SERVER] '):  # prefix is for name identification.
     """Broadcasts a message to all the clients."""
     
-    # if isinstance(msg, str):
-    #     msg = bytes(msg, 'utf8')
+    if isinstance(msg, str):
+        msg = bytes(msg, 'utf8')
 
-    for sock in clients:
-        sock.send(bytes(f'[{prefix}] ', 'utf8') + msg)
+    for client in clients:
+        client.send(bytes(f'[{prefix}] ', 'utf8') + msg)
 
 clients = {}
 addresses = {}
