@@ -19,7 +19,6 @@ def display(text):
 
     print(text)
     
-    
     random_message_id = random.randint(1000000000, 9999999999)
     chat_display.config(state='normal')
     
@@ -55,28 +54,14 @@ def send(event=None):  # event is passed by binders.
     global window
     global connected
     global messages_sent_count
+
+    if connected:
+        global client_socket
     
     msg = message_var.get()
     message_var.set('')  # Clears input field.
     
-    if not connected:
-        if ':' in msg:
-            (IP, PORT) = msg.split(':')
-
-        client_socket = socket(AF_INET, SOCK_STREAM)
-
-        try:
-            client_socket.connect((IP, PORT))
-
-        except Exception as e:
-            display(f'ERROR: Could not connect to "{IP}:{PORT}". Check if the server is running. <{e}>')
-
-        else:
-            receive_thread = Thread(target=receive)
-            receive_thread.start()
-            connected = True
-
-    elif messages_sent_count == 1:
+    if messages_sent_count == 1:
         window.title(msg)
 
     else:
@@ -185,6 +170,29 @@ IP = 'localhost'
 PORT = 1183
 BUFSIZ = 1024
 
-display(f'Please type in a "<IP>:<PORT>" to connect to. Or press enter to use {IP}:{PORT}')
+# display(f'Please type in a "<IP>:<PORT>" to connect to. Or press enter to use {IP}:{PORT}')
 
-tkinter.mainloop()  # Starts GUI execution.
+def run_gui():
+    tkinter.mainloop()  # Starts GUI execution.
+
+if not connected:
+    # if ':' in msg:
+    #     (IP, PORT) = msg.split(':')
+    (IP, PORT) = 'localhost', 1183
+
+    client_socket = socket(AF_INET, SOCK_STREAM)
+
+    try:
+        client_socket.connect((IP, PORT))
+
+    except Exception as e:
+        display(f'ERROR: Could not connect to "{IP}:{PORT}". Check if the server is running. <{e}>')
+
+    else:
+        display('You have been successfully connected to the server!')
+        receive_thread = Thread(target=receive)
+        receive_thread.start()
+        connected = True
+        print(5)
+
+run_gui()
