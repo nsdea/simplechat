@@ -3,20 +3,35 @@
 from socket import AF_INET, socket, SOCK_STREAM
 from threading import Thread
 
+import random
 import tkinter
-import tkinter.messagebox
 import webbrowser
+import tkinter.messagebox
 
 messages_sent_count = 0
+connected = False
 
 def display(text):
     global chat_display
     
-    chat_display.config(state='normal')
-    chat_display.tag_config('author', font=('Consolas', 20, 'bold'))
+    if not text.startswith('['):
+        text = '[CLIENT] ' + text
+
+    print(text)
     
-    chat_display.insert('end', text.split()[0] + ' ', 'author')
-    chat_display.insert('end', ' '.join(text.split()[1:]) + '\n')
+    
+    random_message_id = random.randint(1000000000, 9999999999)
+    chat_display.config(state='normal')
+    
+    if text.startswith('[CLIENT] ERROR') or text.startswith('[SERVER] ERROR'):
+        chat_display.tag_config(random_message_id, font=('Consolas', 20, 'bold'), foreground='red')
+        chat_display.insert('end', text + '\n', random_message_id)
+
+    else:
+        chat_display.tag_config(random_message_id, font=('Consolas', 20))
+        chat_display.insert('end', text.split()[0] + ' ', random_message_id)
+        chat_display.insert('end', ' '.join(text.split()[1:]) + '\n')
+
     chat_display.see('end')
     chat_display.config(state='disabled')
 
@@ -30,31 +45,55 @@ def receive():
             if '<LINK>' in msg:
                 webbrowser.open(msg.split('<LINK>')[1])
 
-        except OSError:  # Possibly client has left the chat.
+        except (OSError, NameError):  # Possibly client has left the chat or no connection is established yet
             break
 
 def send(event=None):  # event is passed by binders.
     """Handles sending of messages."""
+    global IP
+    global PORT
     global window
+    global connected
     global messages_sent_count
     
     msg = message_var.get()
     message_var.set('')  # Clears input field.
     
-    client_socket.send(bytes(msg, 'utf8'))
+    if not connected:
+        if ':' in msg:
+            (IP, PORT) = msg.split(':')
 
-    if not messages_sent_count:
+        client_socket = socket(AF_INET, SOCK_STREAM)
+
+        try:
+            client_socket.connect((IP, PORT))
+
+        except Exception as e:
+            display(f'ERROR: Could not connect to "{IP}:{PORT}". Check if the server is running. <{e}>')
+
+        else:
+            receive_thread = Thread(target=receive)
+            receive_thread.start()
+            connected = True
+
+    elif messages_sent_count == 1:
         window.title(msg)
 
-    if msg == '{quit}':
-        client_socket.close()
-        window.quit()
+    else:
+        try:
+            client_socket.send(bytes(msg, 'utf8'))
+
+            if msg == 'quit':
+                client_socket.close()
+                window.quit()
+        except NameError:
+            display('ERROR: Connection failed. Try restarting and choosing another server.')
 
     messages_sent_count += 1
 
 def on_closing(event=None):
     """This function is to be called when the window is closed."""
-    message_var.set('{quit}')
+    message_var.set('quit')
     send()
 
 window = tkinter.Tk()
@@ -76,8 +115,9 @@ chat_display = tkinter.Listbox(
     xscrollcommand=scrollbar.set,
     bg='#111111',
     fg='green',
-    highlightcolor='black'
+    highlightcolor='red'
 )
+
 chat_display = tkinter.Text(
     messages_frame,
     height=13,
@@ -87,7 +127,9 @@ chat_display = tkinter.Text(
     xscrollcommand=scrollbar.set,
     bg='#111111',
     fg='green',
-    highlightcolor='black',
+    highlightcolor='red',
+    selectbackground='red',
+    selectforeground='green',
     relief='flat',
 )
 
@@ -97,55 +139,52 @@ chat_display.pack()
 
 messages_frame.pack()
 
-entry_field = tkinter.Entry(
+send_frame = tkinter.Frame(
     window,
+    bd=0,
+    bg='#111F11',
+    relief='flat',
+)
+send_frame.pack(side='bottom', fill='x')
+
+entry_field = tkinter.Entry(
+    send_frame,
     textvariable=message_var,
     bg='#111F11',
     fg='green',
     font=('Consolas', 20, 'bold'),
-    width=10,
+    width=46,
     relief='flat',
     cursor='xterm green',
     insertbackground='green',
 )
 entry_field.bind('<Return>', send)
-entry_field.pack(fill='x')
+entry_field.pack(side='left')#fill='x')
 entry_field.focus_set()
 
 send_button = tkinter.Button(
-    window,
-    text='Send',
+    send_frame,
+    text='▶',
     command=send,
     bg='#111111',
     fg='green',
-    width=10,
-    font=('Consolas', 20),
+    width=3,
+    relief='flat',
+    activebackground='black',
+    highlightcolor='black',
+    highlightbackground='black',
+    activeforeground='green',
+    font=('Consolas', 24),
 )
-send_button.pack()
+send_button.pack(side='right')#side='bottom', fill='x')
 
 window.protocol('WM_DELETE_WINDOW', on_closing)
 
-#----Now comes the sockets part----
-HOST = 'localhost'
-PORT = 33000
-
-if not PORT:
-    PORT = 33000
-else:
-    PORT = int(PORT)
-
+# Socket connection setup
+IP = 'localhost'
+PORT = 1183
 BUFSIZ = 1024
-ADDR = (HOST, PORT)
 
-client_socket = socket(AF_INET, SOCK_STREAM)
+display(f'Please type in a "<IP>:<PORT>" to connect to. Or press enter to use {IP}:{PORT}')
 
-try:
-    client_socket.connect(ADDR)
-
-except:
-    tkinter.messagebox.showerror(title='Server Error!', message='The server is currently unavailable.')
-
-else:
-    receive_thread = Thread(target=receive)
-    receive_thread.start()
-    tkinter.mainloop()  # Starts GUI execution.
+tkinter.mainloop()  # Starts GUI execution.

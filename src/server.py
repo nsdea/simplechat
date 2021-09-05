@@ -1,64 +1,87 @@
 #!/usr/bin/env python3
 """Server for multithreaded (asynchronous) chat application."""
 import os
+import time
 import socket
 import random
-import time
 
 from threading import Thread
-from typing import NoReturn
 
-def send(client, text):
-    client.send(bytes(text, 'utf8'))
+def byte(text: str):
+    return bytes(text, 'utf8')
+
+def send(connection, text):
+    connection.send(byte(text))
+
+def receive(client):
+    global BUFFER_SIZE
+    
+    time.sleep(0.1)
+    try:
+        return client.recv(BUFFER_SIZE).decode('utf8')
+    except ConnectionResetError as e:
+        broadcast(f'ERROR - Could not receive data: <{e}>')
+        return ''
 
 def on_join_request():
     """Sets up handling for incoming clients."""
     
     while True:
-        client, client_address = server.accept()
+        connection, client_address = server.accept()
         print('%s:%s connected' % client_address)
-        send(client, '[SYSTEM] Type your name to join the chat.')
+        send(connection, '[SYSTEM] Type your name to join the chat.')
         
-        addresses[client] = client_address
-        Thread(target=handle_client, args=(client,)).start()
+        addresses[connection] = client_address
+        Thread(target=handle_client, args=(connection,)).start()
 
-def handle_client(client):  # Takes client socket as argument.
+def handle_client(connection):  # Takes client socket as argument.
     """Handles a single client connection."""
     
-    name = client.recv(BUFFER_SIZE).decode('utf8').replace(' ', '_')
+    name = receive(connection).replace(' ', '_')
     if not name:
         name = f'Guest{random.randint(1000, 9999)}'
-    
-    send(client, f'>>> Welcome to the chat, @{name}!')
+
+    send(connection, f'>>> Welcome to the chat, @{name}!')
     broadcast(f'@{name} joined the chat!')
-    clients[client] = name
+    clients[connection] = name
 
     while True:
-        msg = client.recv(BUFFER_SIZE)
-        
-        if msg != bytes('{quit}', 'utf8'):
-            broadcast(msg, '@' + name)
-        else:
-            client.send(bytes('{quit}', 'utf8'))
-            client.close()
-            del clients[client]
+        msg = receive(connection)
+        broadcast(msg, f'@{name}')
+
+        if msg == 'quit':
+            connection.send(byte('quit'))
+            connection.close()
+            del clients[connection]
             broadcast(f'{name} left the chat.')
             break
+        
+        elif msg == 'info':
+            readable_clientlist = ''
+            print(clients)
 
-def broadcast(msg, prefix='[SERVER] '):  # prefix is for name identification.
+            for connection in clients.keys():
+                info_str = str(connection)
+                (ip, port) = info_str.split("laddr")[1]
+                connection_info = f'{ip}:{port}'
+                readable_clientlist += f'{connection_info}\t\t{clients[connection]}\n'
+
+            broadcast(clients)
+
+def broadcast(msg, prefix='SERVER'):  # prefix is for name identification.
     """Broadcasts a message to all the clients."""
     
-    if isinstance(msg, str):
-        msg = bytes(msg, 'utf8')
+    if not isinstance(msg, bytes):
+        msg = byte(str(msg))
 
     for client in clients:
-        client.send(bytes(f'[{prefix}] ', 'utf8') + msg)
+        client.send(byte(f'[{prefix}] ') + msg)
 
 clients = {}
 addresses = {}
 
 HOST = ''
-PORT = 33000
+PORT = 1183
 BUFFER_SIZE = 1024
 
 server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -68,8 +91,7 @@ try:
 
 except Exception as e:
     print('SERVER ERROR:', e)
-    os.system('pkill -f python.exe')
-    exit()
+    server.close()
 
 if __name__ == '__main__':
     server.listen(5)
